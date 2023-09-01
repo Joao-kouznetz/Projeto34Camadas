@@ -15,6 +15,65 @@ from enlace import *
 import time
 import numpy as np
 from random import *
+import sys
+
+def generate_command_sequence():
+    quantidade=70
+    lista=[]
+    for i in range(quantidade):
+        lista.append(randint(0, 9))
+    return lista
+
+def segmentar_lista(lista_original):
+    tamanho_maximo_sublista = 50
+    lista_segmentada = []
+    sublista_atual = []
+
+    for valor in lista_original:
+        sublista_atual.append(valor)
+
+        if len(sublista_atual) == tamanho_maximo_sublista:
+            lista_segmentada.append(sublista_atual)
+            sublista_atual = []
+
+    if sublista_atual:
+        lista_segmentada.append(sublista_atual)
+
+    return lista_segmentada
+
+def cria_header_eop(lista_pacotes):
+    lista_final=[]
+    lista_eop=[255,0,255]
+    num_pacotes=len(lista_pacotes)
+    for i in range(len(lista_pacotes)):
+        lista_header=[]
+        lista_header.append(num_pacotes)
+        lista_header.append((i+1))
+        lista_header.append(len(lista_pacotes[i]))
+        for t in range(9):
+            lista_header.append(0)
+        lista_final.append(lista_header)
+        lista_final.append(lista_pacotes[i])
+        lista_final.append(lista_eop)
+    
+    lista_comtudo=[]
+
+    for i in range(0,len(lista_final),3):
+        pacote=[]
+        for valor in  lista_final[i]:
+            pacote.append(valor)
+        for valor2 in lista_final[i+1]:
+            pacote.append(valor2)
+        for valor3 in lista_final[(i+2)]:
+            pacote.append(valor3)
+        lista_comtudo.append(pacote)
+
+
+    return lista_comtudo
+
+
+
+
 
 # voce deverá descomentar e configurar a porta com através da qual ira fazer comunicaçao
 #   para saber a sua porta, execute no terminal :
@@ -34,7 +93,7 @@ def main():
         #para declarar esse objeto é o nome da porta.
         com1 = enlace(serialName)
         
-    
+       
         # Ativa comunicacao. Inicia os threads e a comunicação serial 
         com1.enable()
         #Se chegamos até aqui, a comunicação foi aberta com sucesso. Faça um print para informar.
@@ -49,68 +108,64 @@ def main():
         time.sleep(.2)
         com1.sendData(bytes([0]))
         time.sleep(0.1)
-        
-        def generate_command_sequence():
-            num_commands = randint(10, 30)
+
+        RecebeuDeVolta=False
+        while RecebeuDeVolta==False:
+            print("HandShake:")
+            #header
+            bytes15=bytearray([255,0,0,0,0,0,0,0,0,0,0,0,255,0,255])
+            com1.sendData(np.asarray(bytes15))
+            time.sleep(0.1)
             
-            possible_commands=[
-                [4,0,0,0,0],[4,0,0,187,0],[3,187,0,0],[3,0,187,0],[3,0,0,187],[2,0,170],[2,187,0],[1,0],[1,187]
-            ]
-            comandosEscolhidos=[]
-            for i in range(num_commands):
-                k=randint(0,8)
-                comandosEscolhidos.append(possible_commands[k])
+            print("esperando resposta para transmissão")
+            start_time = time.time()
+            while com1.rx.getBufferLen()<15:
+                time.sleep(0.1)
+                if time.time() - start_time > 5:
+                    print('time out')
+                    tentar_novamente=input("servidor inativo. Tentar novamente? S/N")
+                    if tentar_novamente.lower()=='n':
+                        sys.exit()
+                    if tentar_novamente.lower()=='s':
+                        break
+            if com1.rx.getIsEmpty()==False:
+                RecebeuDeVolta=True
 
-            return comandosEscolhidos,num_commands
-        comando,numerocomandos=generate_command_sequence()
-        
-        listaTodos=[]
-        for i in comando:
-            for t in i:
-                listaTodos.append(t)
-        byte_array0 = bytearray(listaTodos)
-
-        
-        print("Carregando comandos para transmissao:")
-        print("esta mandando o seguinte comando{}".format(byte_array0))
-        print("tem {} comandos nesse envio".format(numerocomandos))
+        print('recebeu handshake')
+        RxBuffer=com1.rx.getNData(15)
+        print(list(RxBuffer))
+        print(len(RxBuffer))
         print("----------------------")
         
-        #txBuffer = imagem em bytes!
-        txBuffer = byte_array0 #isso é um array de bytes
-       
-        print("meu array de bytes tem tamanho {}" .format(len(txBuffer)))
-        #faça aqui uma conferência do tamanho do seu txBuffer, ou seja, quantos bytes serão enviados.
-       
-            
-        #finalmente vamos transmitir os todos. Para isso usamos a funçao sendData que é um método da camada enlace.
-        #faça um print para avisar que a transmissão vai começar.
-        #tente entender como o método send funciona!
-        #Cuidado! Apenas trasmita arrays de bytes!
-               
+        print('começando fragmentação de pacote')
+        #head 12 bytes payload entre 0 e 50 e EOP 3
+        #head mandar numero do pacote e a quantidades de numero total de pacotes que serao transmitidos 
+        lista=generate_command_sequence()
+        lista_pacotes=segmentar_lista(lista)
+        lista_header_pacotes=cria_header_eop(lista_pacotes)
+        print(lista_header_pacotes)
         
-        com1.sendData(np.asarray(txBuffer))  #as array apenas como boa pratica para casos de ter uma outra forma de dados
-          
-        # A camada enlace possui uma camada inferior, TX possui um método para conhecermos o status da transmissão
-        # O método não deve estar funcionando quando usado como abaixo. deve estar retornando zero. Tente entender como esse método funciona e faça-o funcionar.
-        txSize = com1.tx.getStatus()
-        
-        # RECEBE NUMERO DE COMANDOS QUE ELE RECEBEU
-        print("esperadno resposta")
-        #inicia time out
-        start_time = time.time()
-        while com1.rx.getIsEmpty():
+        for pacote in lista_header_pacotes:
+            print('enviando pacote')
+            bytepacote=bytearray(pacote)
+            com1.sendData(np.asarray(bytepacote))
             time.sleep(0.1)
-            if time.time() - start_time > 5:
-                print('time out')
+            RxBuffer=com1.rx.getNData(15)
+            print()
+            decimal=list(RxBuffer)
+            if decimal[0]==1 and  decimal[1]==1 and  decimal[12]==255 and  decimal[13]==0  and decimal[14]==255:
+                pass
+            else:
+                print('deu ruim')
                 break
-        nComandosRecebidos=com1.rx.getAllBuffer(com1.rx.getBufferLen())
-        nComandosRecebidos = list(nComandosRecebidos)      
-        if numerocomandos==nComandosRecebidos[0]:
-            print(f'numero de comandos era {numerocomandos} e recebi {nComandosRecebidos[0]}')
-        else:
-            print("Deu erro na transmissão de comandos")
+                
 
+
+
+
+
+
+    
         
         # Encerra comunicação
         print("-------------------------")
@@ -127,3 +182,10 @@ def main():
     #so roda o main quando for executado do terminal ... se for chamado dentro de outro modulo nao roda
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
