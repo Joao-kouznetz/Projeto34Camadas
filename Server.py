@@ -42,59 +42,72 @@ def main():
         rxBuffer, nRx = com1.getData(1)
         com1.rx.clearBuffer()
         time.sleep(.1)
-        
-        #Agora vamos iniciar a recepção dos dados. Se algo chegou ao RX, deve estar automaticamente guardado
-        #Observe o que faz a rotina dentro do thread RX
-        #print um aviso de que a recepção vai começar.
-
-        #Será que todos os bytes enviados estão realmente guardadas? Será que conseguimos verificar?
-        #Veja o que faz a funcao do enlaceRX  getBufferLen
       
 
         while com1.rx.getIsEmpty():
             time.sleep(0.1)
 
 
-        rxBuffer = com1.rx.getAllBuffer(com1.rx.getBufferLen())
+        rxBuffer = com1.rx.getNData(15)
         print("recebeu {} bytes" .format(len(rxBuffer)))
     
-
-        
-        # print("Salvando dados no arquivo:")
-        # print(rxBuffer)
+            
 
         decimal_values = []
         for byte in rxBuffer:
             decimal_values.append(byte)
 
-        # print("Valores decimais individuais:", decimal_values)
-
-        comandos = []
-        comando = []
-
-        contador = 0
-        for i in decimal_values:
-            if contador == 0:
-                contador = i
-                if len(comando) != 0:
-                    comandos.append(comando)
-                comando = []
-
-            else:
-                comando.append(i)
-                contador -= 1
-            
-        comandos.append(comando)   
-
         # Enviando de volta o numero de comandos
+        print(decimal_values)
+        if decimal_values[0] == 255:
+            bytes15 = bytearray(decimal_values)
+            com1.sendData(np.asarray(bytes15))
 
-        retorna_Ncomandos = bytearray([len(comandos)])
-        com1.sendData(np.asarray(retorna_Ncomandos))
-        
-        #Printando comandos linha por linha
+        conteudo_total = [] #conteudo junto no payload
+        n_pacote = 0
+        n_total_pacotes = -1
 
-        for i in comandos:
-            print(i)
+        while n_pacote != n_total_pacotes:
+            #HEAD
+            rxBuffer = com1.rx.getNData(12)
+            print("recebeu {} bytes na head" .format(len(rxBuffer)))
+
+            decimal_values = []
+            for byte in rxBuffer:
+                decimal_values.append(byte)  
+
+            n_total_pacotes = decimal_values[0]
+
+            if n_pacote + 1 == decimal_values[1]:
+                n_pacote = decimal_values[1]
+
+                payload = decimal_values[2] #Quantos bytes tem no payload do pacote
+
+                #PAYLOAD
+                rxBuffer = com1.rx.getNData(payload)
+                print("recebeu {} bytes no payload" .format(len(rxBuffer)))
+
+                decimal_values = []
+                for byte in rxBuffer:
+                    #decimal_values.append(byte)
+                    conteudo_total.append(byte)
+
+                #EOP
+                rxBuffer = com1.rx.getNData(3)
+                print("recebeu {} bytes no EOP" .format(len(rxBuffer)))    
+
+                decimal_values = []
+                for byte in rxBuffer:
+                    decimal_values.append(byte) 
+
+                if decimal_values[0] == 255 and decimal_values[1] == 0 and decimal_values[2] == 255:
+                    tudo_certo = bytearray([1,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                    com1.sendData(np.asarray(tudo_certo))
+                    time.sleep(.1)
+            else:
+                print('Numero do pacote não correspondido')
+
+        print(conteudo_total)
 
         # Encerra comunicação
         print("-------------------------")
