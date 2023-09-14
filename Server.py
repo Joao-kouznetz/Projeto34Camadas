@@ -66,16 +66,18 @@ def main():
         conteudo_total = [] #conteudo junto no payload
         n_pacote = 0
         n_total_pacotes = -1
-
+        time.sleep(0.5
+                   )
         while n_pacote != n_total_pacotes:
-            #HEAD
+            #HEAD                    
             rxBuffer = com1.rx.getNData(12)
-            print("recebeu {} bytes na head" .format(len(rxBuffer)))
+            print("recebeu {} bytes na head".format(len(rxBuffer)))
 
             decimal_values = []
             for byte in rxBuffer:
                 decimal_values.append(byte)  
 
+            print('head', decimal_values)
             n_total_pacotes = decimal_values[0]
 
             if n_pacote + 1 == decimal_values[1]:
@@ -84,30 +86,68 @@ def main():
                 payload = decimal_values[2] #Quantos bytes tem no payload do pacote
 
                 #PAYLOAD
+                start_time = time.time()
                 rxBuffer = com1.rx.getNData(payload)
                 print("recebeu {} bytes no payload" .format(len(rxBuffer)))
 
                 decimal_values = []
                 for byte in rxBuffer:
-                    #decimal_values.append(byte)
+                    decimal_values.append(byte)
                     conteudo_total.append(byte)
 
+                print('payload', decimal_values)
+
                 #EOP
-                rxBuffer = com1.rx.getNData(3)
-                print("recebeu {} bytes no EOP" .format(len(rxBuffer)))    
-
-                decimal_values = []
-                for byte in rxBuffer:
-                    decimal_values.append(byte) 
-
-                if decimal_values[0] == 255 and decimal_values[1] == 0 and decimal_values[2] == 255:
-                    tudo_certo = bytearray([1,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
-                    com1.sendData(np.asarray(tudo_certo))
+                start_time = time.time()
+                tempoMenor5EOP = True
+                while com1.rx.getBufferLen() < 3 and tempoMenor5EOP == True:
                     time.sleep(.1)
+                    print('len buffer', com1.rx.getBufferLen())
+                    print('tempo', time.time() - start_time)
+                    if time.time() - start_time >= 3:
+                        tempoMenor5EOP = False
+
+                if tempoMenor5EOP == False:
+                    print('Não recebeu a quantidade certa de bytes')
+                    com1.rx.clearBuffer()
+                    deu_ruim = bytearray([255,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                    n_pacote -= 1
+                    com1.sendData(np.asarray(deu_ruim))
+                    time.sleep(.1)
+       
+                else:
+                    rxBuffer = com1.rx.getNData(3)
+                    print("recebeu {} bytes no EOP" .format(len(rxBuffer)))    
+
+                    decimal_values = []
+                    for byte in rxBuffer:
+                        decimal_values.append(byte) 
+
+                    if decimal_values[0] == 255 and decimal_values[1] == 0 and decimal_values[2] == 255:
+                        tudo_certo = bytearray([1,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                        com1.sendData(np.asarray(tudo_certo))
+                        time.sleep(.1)
+                    else:
+                        print('Payload não corresponde')
+                        com1.rx.clearBuffer()
+                        deu_ruim = bytearray([1,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                        n_pacote -= 1
+                        com1.sendData(np.asarray(deu_ruim))
+                        time.sleep(.1)
+
             else:
                 print('Numero do pacote não correspondido')
+                com1.rx.clearBuffer()
+                deu_ruim = bytearray([255,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                com1.sendData(np.asarray(deu_ruim))
+                time.sleep(.1)
+                
+        print('Conteudo total:', conteudo_total)
 
-        print(conteudo_total)
+        #Confirma para o cliente que deu tudo certo
+        deu_tudo_certo = bytearray([2,2,0,0,0,0,0,0,0,0,0,0,255,0,255])
+        com1.sendData(np.asarray(deu_tudo_certo))
+        time.sleep(.1)
 
         # Encerra comunicação
         print("-------------------------")
