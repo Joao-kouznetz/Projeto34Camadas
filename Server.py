@@ -64,83 +64,120 @@ def main():
             com1.sendData(np.asarray(bytes15))
 
         conteudo_total = [] #conteudo junto no payload
-        n_pacote = 0
+        n_pacote = 1
         n_total_pacotes = -1
         time.sleep(0.5
                    )
-        while n_pacote != n_total_pacotes:
-            #HEAD                    
-            rxBuffer = com1.rx.getNData(12)
-            print("recebeu {} bytes na head".format(len(rxBuffer)))
+        while n_pacote != n_total_pacotes+1:
 
-            decimal_values = []
-            for byte in rxBuffer:
-                decimal_values.append(byte)  
+            #HEAD          
+            start_time = time.time()
+            tempoMenor5HEAD = True
+            while com1.rx.getBufferLen() < 12 and tempoMenor5HEAD == True:
+                time.sleep(.1)
+                print('tempo', time.time() - start_time)
+                if time.time() - start_time >= 3:
+                    tempoMenor5HEAD = False
 
-            print('head', decimal_values)
-            n_total_pacotes = decimal_values[0]
-
-            if n_pacote + 1 == decimal_values[1]:
-                n_pacote = decimal_values[1]
-
-                payload = decimal_values[2] #Quantos bytes tem no payload do pacote
-
-                #PAYLOAD
-                start_time = time.time()
-                rxBuffer = com1.rx.getNData(payload)
-                print("recebeu {} bytes no payload" .format(len(rxBuffer)))
+            if tempoMenor5HEAD == False:
+                print('Não recebeu a quantidade certa de bytes no HEAD')
+                com1.rx.clearBuffer()
+                deu_ruim = bytearray([255,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                com1.sendData(np.asarray(deu_ruim))
+                time.sleep(.1) 
+            
+            else:
+                rxBuffer = com1.rx.getNData(12)
+                print("recebeu {} bytes na head, numero pacore: {}".format(len(rxBuffer), n_pacote))
 
                 decimal_values = []
                 for byte in rxBuffer:
-                    decimal_values.append(byte)
-                    conteudo_total.append(byte)
+                    decimal_values.append(byte)  
 
-                print('payload', decimal_values)
+                print('head', decimal_values)
+                n_total_pacotes = decimal_values[0]
 
-                #EOP
-                start_time = time.time()
-                tempoMenor5EOP = True
-                while com1.rx.getBufferLen() < 3 and tempoMenor5EOP == True:
-                    time.sleep(.1)
-                    print('len buffer', com1.rx.getBufferLen())
-                    print('tempo', time.time() - start_time)
-                    if time.time() - start_time >= 3:
-                        tempoMenor5EOP = False
+                print('n do pacote', n_pacote)
+                print('d_values[1]', decimal_values[1])
+                if n_pacote == decimal_values[1]:
+                    n_pacote = decimal_values[1]
 
-                if tempoMenor5EOP == False:
-                    print('Não recebeu a quantidade certa de bytes')
-                    com1.rx.clearBuffer()
-                    deu_ruim = bytearray([255,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
-                    n_pacote -= 1
-                    com1.sendData(np.asarray(deu_ruim))
-                    time.sleep(.1)
-       
-                else:
-                    rxBuffer = com1.rx.getNData(3)
-                    print("recebeu {} bytes no EOP" .format(len(rxBuffer)))    
+                    payload = decimal_values[2] #Quantos bytes tem no payload do pacote
 
-                    decimal_values = []
-                    for byte in rxBuffer:
-                        decimal_values.append(byte) 
-
-                    if decimal_values[0] == 255 and decimal_values[1] == 0 and decimal_values[2] == 255:
-                        tudo_certo = bytearray([1,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
-                        com1.sendData(np.asarray(tudo_certo))
+                    #PAYLOAD
+                    start_time = time.time()
+                    tempoMenorPAYLOAD = True
+                    while com1.rx.getBufferLen() < payload and tempoMenorPAYLOAD == True:
                         time.sleep(.1)
-                    else:
-                        print('Payload não corresponde')
+                        print('len buffer', com1.rx.getBufferLen())
+                        print('tempo', time.time() - start_time)
+                        if time.time() - start_time >= 3:
+                            tempoMenorPAYLOAD = False
+
+                    if tempoMenorPAYLOAD == False:
+                        print('Não recebeu a quantidade certa de bytes no PAYLOAD')
                         com1.rx.clearBuffer()
-                        deu_ruim = bytearray([1,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
-                        n_pacote -= 1
+                        deu_ruim = bytearray([255,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
                         com1.sendData(np.asarray(deu_ruim))
                         time.sleep(.1)
 
-            else:
-                print('Numero do pacote não correspondido')
-                com1.rx.clearBuffer()
-                deu_ruim = bytearray([255,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
-                com1.sendData(np.asarray(deu_ruim))
-                time.sleep(.1)
+                    else:
+                        rxBuffer = com1.rx.getNData(payload)
+                        print("recebeu {} bytes no payload, numero do pacote: {}" .format(len(rxBuffer), n_pacote))
+
+                        decimal_values = []
+                        for byte in rxBuffer:
+                            decimal_values.append(byte)
+
+                        conteudo_pacote = decimal_values
+                        print('payload', decimal_values)
+
+                        #EOP
+                        start_time = time.time()
+                        tempoMenor5EOP = True
+                        while com1.rx.getBufferLen() < 3 and tempoMenor5EOP == True:
+                            time.sleep(.1)
+                            print('len buffer', com1.rx.getBufferLen())
+                            print('tempo', time.time() - start_time)
+                            if time.time() - start_time >= 3:
+                                tempoMenor5EOP = False
+
+                        if tempoMenor5EOP == False:
+                            print('Não recebeu a quantidade certa de bytes no EOP')
+                            com1.rx.clearBuffer()
+                            deu_ruim = bytearray([255,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                            com1.sendData(np.asarray(deu_ruim))
+                            time.sleep(.1)
+            
+                        else:
+                            rxBuffer = com1.rx.getNData(3)
+                            print("recebeu {} bytes no EOP, numero do pacote: {}++++" .format(len(rxBuffer), n_pacote))    
+
+                            decimal_values = []
+                            for byte in rxBuffer:
+                                decimal_values.append(byte) 
+
+                            if decimal_values[0] == 255 and decimal_values[1] == 0 and decimal_values[2] == 255:
+                                n_pacote += 1
+                                for byte in conteudo_pacote:
+                                    conteudo_total.append(byte)
+                                tudo_certo = bytearray([1,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                                com1.sendData(np.asarray(tudo_certo))
+                                time.sleep(.1)
+                            else:
+                                print('Payload não corresponde')
+                                com1.rx.clearBuffer()
+                                deu_ruim = bytearray([1,255,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                                com1.sendData(np.asarray(deu_ruim))
+                                time.sleep(.1)
+
+                else:
+                    print('Numero do pacote não correspondido')
+                    com1.rx.clearBuffer()
+                    deu_ruim = bytearray([255,1,0,0,0,0,0,0,0,0,0,0,255,0,255])
+                    com1.sendData(np.asarray(deu_ruim))
+                    time.sleep(.1)
+
                 
         print('Conteudo total:', conteudo_total)
 
